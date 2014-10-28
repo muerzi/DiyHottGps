@@ -46,6 +46,18 @@ static inline void hottV4EnableTransmitterMode() {
 static void hottV4SerialWrite(uint8_t c) {
   hottV4Serial.write(c);
 }
+ 
+/**
+ * Converts from degree
+ */
+void convert_to_degrees_minutes_seconds(float val, int *deg_sec, int *degMin){
+  int16_t deg = (int)val;
+  double sec = (val - deg);
+  int8_t min = (int) (sec * 60);
+  
+  *deg_sec = abs((int) (((sec * 60) - min) * 10000.0f));
+  *degMin = abs((int)(deg * 100 + min));
+}
 
   static void hottV4GPSUpdate() {
     //number of Satelites
@@ -58,18 +70,21 @@ static void hottV4SerialWrite(uint8_t c) {
       int16_t degMin;
 	  
       //latitude
-      HoTTV4GPSModule.LatitudeNS=(gps.location.lat()<0);  
-      HoTTV4GPSModule.longitudeEW=(gps.location.lng()<0);
-
-      HoTTV4GPSModule.LatitudeMinLow = MultiHoTTModule.GPS_LatDegMin;
-      HoTTV4GPSModule.LatitudeMinHigh = MultiHoTTModule.GPS_LatDegMin >> 8;
-      HoTTV4GPSModule.LatitudeSecLow = MultiHoTTModule.GPS_LatDecMin;
-      HoTTV4GPSModule.LatitudeSecHigh = MultiHoTTModule.GPS_LatDecMin >> 8;
-   
-      HoTTV4GPSModule.longitudeMinLow = MultiHoTTModule.GPS_LonDegMin;
-      HoTTV4GPSModule.longitudeMinHigh = MultiHoTTModule.GPS_LonDegMin >> 8;
-      HoTTV4GPSModule.longitudeSecLow = MultiHoTTModule.GPS_LonDecMin;
-      HoTTV4GPSModule.longitudeSecHigh = MultiHoTTModule.GPS_LonDecMin >> 8;
+      convert_to_degrees_minutes_seconds(MultiHoTTModule.GPS_latitude, &deg_sec, &degMin);
+      HoTTV4GPSModule.LatitudeNS=(MultiHoTTModule.GPS_latitude<0);  
+      HoTTV4GPSModule.LatitudeMinLow = degMin;
+      HoTTV4GPSModule.LatitudeMinHigh = degMin >> 8;
+      HoTTV4GPSModule.LatitudeSecLow = deg_sec;
+      HoTTV4GPSModule.LatitudeSecHigh = deg_sec >> 8;
+	  
+	  
+      //longitude
+      convert_to_degrees_minutes_seconds(MultiHoTTModule.GPS_longitude, &deg_sec, &degMin);
+      HoTTV4GPSModule.longitudeEW=(MultiHoTTModule.GPS_longitude<0);
+      HoTTV4GPSModule.longitudeMinLow = degMin;
+      HoTTV4GPSModule.longitudeMinHigh = degMin >> 8;
+      HoTTV4GPSModule.longitudeSecLow = deg_sec;
+      HoTTV4GPSModule.longitudeSecHigh = deg_sec >> 8;
 	  
 	  
       /** GPS Speed in km/h */
@@ -133,7 +148,7 @@ static void hottV4SerialWrite(uint8_t c) {
     hottV4SendData(outBuffer, kHoTTv4BinaryPacketSize);
   }
 
-  /**
+/**
  * Updates m1s, m3s, and m10s inclination for VARIO.
 
 static void updateVarioInclination() {
@@ -208,6 +223,56 @@ static void updateVarioInclination() {
 static uint32_t seconds() {
   return millis() / 1000;
 }
+
+/**
+ * Updates height over ground, max. height over ground, and min. height over ground for VARIO.
+static void updateVarioAltitude() {
+  static int16_t maxAltitude = OFFSET_ALTITUDE;
+  static int16_t minAltitude = OFFSET_ALTITUDE;
+  
+  static int32_t referenceRawAltitude = 0;
+
+  if ((0 == referenceRawAltitude) && (0 != MultiHoTTModule.altitude)) {
+    referenceRawAltitude = MultiHoTTModule.altitude;    
+  } else {
+    altitude = (int16_t)((MultiHoTTModule.altitude - referenceRawAltitude) / 100);
+    maxAltitude = max(maxAltitude, OFFSET_ALTITUDE + altitude);
+    minAltitude = min(minAltitude, OFFSET_ALTITUDE + altitude);
+    
+    if (altitude >= (100 * MultiHoTTModuleSettings.maxAltitude)) {
+      HoTTV4VarioModule.alarmTone = HoTTv4NotificationMaxAltitude;  
+      HoTTV4VarioModule.alarmInverse |= 0x2; // Invert max altitude 
+    }
+  }
+  HoTTV4VarioModule.altitude = OFFSET_ALTITUDE + altitude; 
+  HoTTV4VarioModule.maxAltitude = maxAltitude;
+  HoTTV4VarioModule.minAltitude = minAltitude;  
+}
+ */ 
+ 
+/**
+ Sends HoTTv4 capable VARIO telemetry frame.
+static void hottV4SendVARIO() {
+   Minimum data set for Vario 
+  HoTTV4VarioModule.startByte = 0x7C;
+  HoTTV4VarioModule.sensorID = HOTTV4_VARIO_SENSOR_ID;
+  HoTTV4VarioModule.sensorTextID = HOTTV4_VARIO_SENSOR_TEXT_ID;
+  HoTTV4VarioModule.endByte = 0x7D;
+
+  
+  updateVarioAltitude();
+  updateVarioInclination();
+
+  // Clear output buffer
+  memset(&outBuffer, 0, sizeof(outBuffer));
+  
+  // Copy EAM data to output buffer
+  memcpy(&outBuffer, &HoTTV4VarioModule, kHoTTv4BinaryPacketSize);
+  
+  // Send data from output buffer
+  hottV4SendData(outBuffer, kHoTTv4BinaryPacketSize);
+}*/
+
 
  /* Expects an array of at least size bytes. All bytes till size will be transmitted
  * to the HoTT capable receiver. Last byte will always be treated as checksum and is

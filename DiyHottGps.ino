@@ -7,41 +7,26 @@
 
 #include "SoftwareSerial.h"
 #include <avr/io.h> 
-#include <TinyGPS++.h>
-#include <avr/wdt.h> 
+#include <TinyGPS.h> 
 
-#define LED 13
 //#define Vario
-//#define open360Tracker
 
-TinyGPSPlus gps; 
+TinyGPS gps; 
 
-TinyGPSCustom exactLat(gps, "GPRMC", 3);
-TinyGPSCustom exactLon(gps, "GPRMC", 5);
-
-double HOME_LAT = 0, HOME_LON = 0;
+float HOME_LAT = 0, HOME_LON = 0;
 float start_height = 0;
+
+bool feedgps();  
 bool is_set_home = 0;
 uint32_t last = 0;
 int p_alt[4]={0,0,0,0};
 
-//Variables for GPS-Functions
-int16_t LatDegMin, LatDecMin, LonDegMin, LonDecMin;
-bool newdata = false;
-uint32_t now = millis(); 
-  
 struct {
   
   uint8_t  GPS_fix;
   uint8_t  GPS_numSat;
-  double GPS_latitude_HOME;
-  double GPS_longitude_HOME;
-  //double GPS_latitude;
-  //double GPS_longitude;
-  uint16_t GPS_LatDegMin;
-  uint16_t GPS_LatDecMin;
-  uint16_t GPS_LonDegMin;
-  uint16_t GPS_LonDecMin;
+  float GPS_latitude;
+  float GPS_longitude;
   uint16_t GPS_altitude;
   uint16_t GPS_speed;
   uint16_t GPS_Vario1;
@@ -50,93 +35,105 @@ struct {
   uint16_t GPS_distanceToHome;
   uint8_t  GPS_directionToHome;
   uint8_t  GPS_alarmTone;
-  int16_t altitude;
+  int32_t altitude;
   
 } MultiHoTTModule;
 
-void setup() {
+#define LED 13
 
-  wdt_enable(WDTO_2S);
+void setup() {
+  
   pinMode(LED, OUTPUT);
   Serial.begin(38400);
-  hottV4Setup();
-  
+  is_set_home = 0;
+
   #ifdef Vario
 	setupAltitude();
   #endif
-     
-  MultiHoTTModule.GPS_fix       = 0;  
+  
+  hottV4Setup();
   
 }
 
-void loop() {
-
-   smartdelay(200);
-   wdt_reset();
-   
-   #ifdef Vario
-	  MultiHoTTModule.GPS_altitude = readAltitude();
-   #else
-	  MultiHoTTModule.GPS_altitude =  gps.altitude.meters();
-   #endif
-   
-   updateVario(); 
-
-   //set homeposition
-   if (is_set_home == 0)  // we need more than 6 sats
-   {
-       if (gps.satellites.value() >=6 && gps.altitude.isValid() && gps.location.isValid())
-	   {
-		   MultiHoTTModule.GPS_latitude_HOME = gps.location.lat();
-		   MultiHoTTModule.GPS_longitude_HOME = gps.location.lng();
-		   //start_height = alt;	   //in future height will be set with BMP085
-		   is_set_home = 1;
-		   MultiHoTTModule.GPS_fix       = 1;
-	   }
-   }  
-   
-       
-   
-   sscanf(exactLat.value(), "%4d.%4d", MultiHoTTModule.GPS_LatDegMin, MultiHoTTModule.GPS_LatDecMin);
-   sscanf(exactLon.value(), "%5d.%4d", MultiHoTTModule.GPS_LonDegMin, MultiHoTTModule.GPS_LonDecMin);
-   
-   MultiHoTTModule.GPS_numSat = gps.satellites.value();  
-
-   MultiHoTTModule.GPS_speed     = MultiHoTTModule.GPS_speed; 
-   
-   MultiHoTTModule.GPS_altitude = MultiHoTTModule.GPS_altitude+500;//-start_height;  // from GPS in cm, +500m Offset for Hott   
-   
-   MultiHoTTModule.GPS_distanceToHome = gps.distanceBetween(gps.location.lat(), gps.location.lng(), HOME_LAT, HOME_LON); //calculation of distance to home
-   
-   MultiHoTTModule.GPS_directionToHome = gps.courseTo(MultiHoTTModule.GPS_latitude_HOME, MultiHoTTModule.GPS_longitude_HOME, MultiHoTTModule.GPS_LatDegMin, MultiHoTTModule.GPS_LonDegMin); //calculation of bearing from home to plane
-   
-   MultiHoTTModule.GPS_flightDirection = ((int)gps.course.deg())/2;   //flightcourse of the plane
-   
-   hottV4SendTelemetry();// send data 
-
-}
-
-void smartdelay(unsigned long ms){
-  unsigned long start = millis();
-  do 
+bool feedgps()
+{
+  while (Serial.available())
   {
-    while (Serial.available())
-      gps.encode(Serial.read());
-  } while (millis() - start < ms);
-}
-
-void updateVario(){
-   if ((now - last) > 1000) //measure every second for Vario function
-   {  
-     last = now;
-     p_alt[3] = p_alt[2];
-     p_alt[2] = p_alt[1];
-     p_alt[1] = p_alt[0];
-     p_alt[0] = MultiHoTTModule.GPS_altitude+500;     
-   }
+    if (gps.encode(Serial.read()))
+      return true;
+  }
+  return false;
 }
 
 void toggle_LED(){
  digitalWrite(LED, !digitalRead(LED)); 
 }
 
+void loop() {
+
+  //Variables for GPS-Functions
+  unsigned long speed_k; // Knots * 100
+  long lat, lon;
+  float flat, flon, alt;
+  unsigned long age, dat, tim, ui_course;
+  //uint16_t alt;
+  unsigned int numsat; 
+  bool newdata = false;
+  uint32_t now = millis();  
+  
+ if (feedgps()) newdata = true;
+ 
+ if ( newdata == true)
+ {
+
+   gps.get_position(&lat, &lon, &age);
+   gps.f_get_position(&flat, &flon);
+   gps.get_datetime(&dat, &tim, &age);
+   //alt = (int) gps.f_altitude();
+   alt =  gps.altitude()/100;
+   numsat = gps.satellites(); 
+   ui_course = gps.course()/100;
+   speed_k = gps.speed(); 
+   
+   if ((now - last) > 1000) //measure every second for Vario function
+   {  
+     last = now;
+     p_alt[3] = p_alt[2];
+     p_alt[2] = p_alt[1];
+     p_alt[1] = p_alt[0];
+     p_alt[0] = alt+500;     
+   }
+   
+   //set homeposition
+   if (is_set_home == 0 && numsat >= 6)  // we need more than 6 sats
+   {
+       
+       HOME_LAT = flat;
+       HOME_LON = flon;
+       start_height = alt;	   //in future height will be set with BMP085
+
+	   if ((gps.altitude()/100) != 9999999)	
+	   {
+		is_set_home = 1;
+	   }	
+   }  
+   
+   MultiHoTTModule.GPS_fix       = 1;       
+   MultiHoTTModule.GPS_numSat    = numsat;  //Satellites in view
+   MultiHoTTModule.GPS_latitude  = flat;     //Geograph. Latitude
+   MultiHoTTModule.GPS_longitude = flon;     //Geograph. Longitude
+   MultiHoTTModule.GPS_speed     = (speed_k * 1852) / 100000; // from GPS in Knots*100 -> km/h
+   MultiHoTTModule.GPS_altitude = alt+500-start_height;  // from GPS in cm, +500m Offset for Hott   
+   MultiHoTTModule.GPS_distanceToHome = gps.distance_between(flat, flon, HOME_LAT, HOME_LON); //calculation of distance to home
+   MultiHoTTModule.GPS_directionToHome = gps.course_to(HOME_LAT, HOME_LON, lat, lon) / 2; //calculation of bearing from home to plane
+   MultiHoTTModule.GPS_flightDirection = ui_course/2;   //flightcourse of the plane
+   
+ }
+
+   #ifdef Vario
+	readAltitude();
+  #endif
+ 
+  // send data
+  hottV4SendTelemetry();
+}
