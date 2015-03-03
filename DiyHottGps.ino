@@ -1,16 +1,12 @@
 /**
  * DIY-HOTT-GPS is a standalone Arduino based Application that acts 
  * as a HoTTv4 capable device to transmit GPS/Vario information. 
- * Code contains parts by Oliver Bayer, Carsten Giesen, Jochen Boenig and Stefan Muerzl 11/2013
- * tested by Robert aka Skyfighter THANKS!
+ * Code contains party by Oliver Bayer, Carsten Giesen, Jochen Boenig and Stefan Muerzl 04/2013
  */
 
 #include "SoftwareSerial.h"
 #include <avr/io.h> 
 #include <TinyGPS.h> 
-
-//#define Vario
-
 TinyGPS gps; 
 
 float HOME_LAT = 0, HOME_LON = 0;
@@ -25,8 +21,8 @@ struct {
   
   uint8_t  GPS_fix;
   uint8_t  GPS_numSat;
-  float GPS_latitude;
-  float GPS_longitude;
+  uint32_t GPS_latitude;
+  uint32_t GPS_longitude;
   uint16_t GPS_altitude;
   uint16_t GPS_speed;
   uint16_t GPS_Vario1;
@@ -35,7 +31,6 @@ struct {
   uint16_t GPS_distanceToHome;
   uint8_t  GPS_directionToHome;
   uint8_t  GPS_alarmTone;
-  int32_t altitude;
   
 } MultiHoTTModule;
 
@@ -44,13 +39,15 @@ struct {
 void setup() {
   
   pinMode(LED, OUTPUT);
-  Serial.begin(38400);
+  delay(200);
+
+  Serial.begin(57600);
+  delay(200);
+  //Serial.println("$PMTK300,250,0,0,0,0*2A");  //   init GPS
+  delay(100);
+  
   is_set_home = 0;
 
-  #ifdef Vario
-	setupAltitude();
-  #endif
-  
   hottV4Setup();
   
 }
@@ -105,7 +102,7 @@ void loop() {
    }
    
    //set homeposition
-   if (is_set_home == 0 && numsat >= 6)  // we need more than 6 sats
+   if (is_set_home == 0 && numsat >= 5)  // we need more than 5 sats
    {
        
        HOME_LAT = flat;
@@ -120,8 +117,8 @@ void loop() {
    
    MultiHoTTModule.GPS_fix       = 1;       
    MultiHoTTModule.GPS_numSat    = numsat;  //Satellites in view
-   MultiHoTTModule.GPS_latitude  = flat;     //Geograph. Latitude
-   MultiHoTTModule.GPS_longitude = flon;     //Geograph. Longitude
+   MultiHoTTModule.GPS_latitude  = lat;     //Geograph. Latitude
+   MultiHoTTModule.GPS_longitude = lon;     //Geograph. Longitude
    MultiHoTTModule.GPS_speed     = (speed_k * 1852) / 100000; // from GPS in Knots*100 -> km/h
    MultiHoTTModule.GPS_altitude = alt+500-start_height;  // from GPS in cm, +500m Offset for Hott   
    MultiHoTTModule.GPS_distanceToHome = gps.distance_between(flat, flon, HOME_LAT, HOME_LON); //calculation of distance to home
@@ -130,10 +127,6 @@ void loop() {
    
  }
 
-   #ifdef Vario
-	readAltitude();
-  #endif
- 
   // send data
   hottV4SendTelemetry();
 }
