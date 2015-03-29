@@ -4,6 +4,9 @@
 #define HOTTV4_GPS_SENSOR_ID 0x8A // GPS Sensor ID
 #define HOTTV4_GPS_SENSOR_TEXT_ID 0xA0 // GPS Module ID
 
+#define HOTTV4_VARIO_SENSOR_ID 0x89 // Vario Sensor ID
+#define HOTTV4_VARIO_SENSOR_TEXT_ID 0x90 // Vario Module ID
+
 const uint8_t kHoTTv4BinaryPacketSize = 45; 
 const uint8_t kHoTTv4TextPacketSize = 173;
 
@@ -51,6 +54,7 @@ typedef enum {
   HoTTv4NotificationReceiver             = 0x35,
 } HoTTv4Notification;
 
+//GPS
 struct {
   uint8_t startByte;               /* Byte 1: 0x7C = Start byte data */
   uint8_t sensorID;                /* Byte 2: 0x8A = GPS Sensor */
@@ -101,5 +105,34 @@ struct {
   uint8_t endByte;                 /* Byte 44: 0x7D Ende byte */
   uint8_t chksum;                  /* Byte 45: Parity Byte */
 } HoTTV4GPSModule;
+
+//Vario
+struct {
+  uint8_t startByte;
+  uint8_t sensorID;
+  uint8_t alarmTone; /* Alarm */
+  uint8_t sensorTextID;
+  uint8_t alarmInverse;
+
+  uint16_t altitude;
+  uint16_t maxAltitude;
+  uint16_t minAltitude;
+
+  uint16_t m1s;
+  uint16_t m3s;
+  uint16_t m10s;
+
+  uint8_t text[24];
+  uint8_t empty;
+
+  uint8_t version;
+  uint8_t endByte;
+  uint8_t chksum;
+} HoTTV4VarioModule;
+
+struct {
+  int16_t maxAltitude;
+  uint8_t varioBeep;
+} MultiHoTTModuleSettings;
 
 #endif
