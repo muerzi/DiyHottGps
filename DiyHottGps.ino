@@ -13,6 +13,8 @@
  * Diese Projekt benötigt TinyGPS v13 von http://arduiniana.org/libraries/tinygps/ ansonsten funktioniert der Sensor nicht!
  * Download hier: https://github.com/mikalhart/TinyGPS/archive/v13.zip
  *
+ * Version 1
+ *
  */
 
 #include "SoftwareSerial.h"
